@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash -x
 #
 # JBoss standalone control script
 #
@@ -8,6 +8,8 @@
 # pidfile: /var/run/jboss-as/jboss-as-standalone.pid
 # config: /etc/jboss-as/jboss-as.conf
 
+JBOSS_HOME="/opt/jboss"
+JBOSS_CONSOLE_LOG="/opt/jboss/log/console.log"
 # Source function library.
 . /etc/init.d/functions
 
@@ -30,17 +32,17 @@ fi
 # Set defaults.
 
 if [ -z "$JBOSS_HOME" ]; then
-  JBOSS_HOME=/usr/share/jboss-as
+  JBOSS_HOME=/opt/jboss
 fi
 export JBOSS_HOME
 
 if [ -z "$JBOSS_PIDFILE" ]; then
-  JBOSS_PIDFILE=/var/run/jboss-as/jboss-as-standalone.pid
+  JBOSS_PIDFILE=/var/run/jboss/jboss-standalone.pid
 fi
 export JBOSS_PIDFILE
 
 if [ -z "$JBOSS_CONSOLE_LOG" ]; then
-  JBOSS_CONSOLE_LOG=/var/log/jboss-as/console.log
+  JBOSS_CONSOLE_LOG=/opt/jboss/log/console.log
 fi
 
 if [ -z "$STARTUP_WAIT" ]; then
@@ -57,7 +59,7 @@ fi
 
 JBOSS_SCRIPT=$JBOSS_HOME/bin/standalone.sh
 
-prog='jboss-as'
+prog='jboss'
 
 CMD_PREFIX=''
 

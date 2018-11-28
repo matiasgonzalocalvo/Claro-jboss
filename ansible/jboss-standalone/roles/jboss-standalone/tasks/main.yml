@@ -1,72 +1,127 @@
 ---
-- name: Install Java 1.7 and some basic dependencies
+- name: Instalar paquetes
   yum:
     name: "{{ item }}"
     state: present
   with_items:
    - unzip
-   - java-1.7.0-openjdk
+   - git
    - libselinux-python
    - libsemanage-python
 
-- name: Download JBoss from jboss.org
-  get_url:
-    url: http://download.jboss.org/jbossas/7.1/jboss-as-7.1.1.Final/jboss-as-7.1.1.Final.zip
-    dest: /opt/jboss-as-7.1.1.Final.zip
+- name: Clonando Git ahi subi el jboss y el java
+  git:
+    force : yes
+    repo: 'https://github.com/matiasgonzalocalvo/Claro-jboss.git' 
+    dest: /tmp/claro-jboss
 
-- name: Extract archive
-  unarchive:
-    dest: /usr/share
-    src: /opt/jboss-as-7.1.1.Final.zip
-    creates: /usr/share/jboss-as
-    copy: no
+- name: Chequeo si la carpeta "{{ carpeta_raiz }}/{{ jboss }}" existe
+  stat:
+    path: "{{ carpeta_raiz }}/{{ jboss }}"
+  register: stat_jboss
 
-  # Rename the dir to avoid encoding the version in the init script
-- name: Rename install directory
-  command: /bin/mv jboss-as-7.1.1.Final jboss-as 
-  args:
-    chdir: /usr/share 
-    creates: /usr/share/jboss-as
+- name: Moviendo jboss a carpeta /opt/
+  command: "/bin/mv /tmp/claro-jboss/binarios/{{ jboss }} {{ carpeta_raiz }}"
+  when: stat_jboss.stat.exists == False
 
-- name: Copying standalone.xml configuration file
-  template:
-    src: standalone.xml
-    dest: /usr/share/jboss-as/standalone/configuration/
-  notify: restart jboss
+- name: Chequeo si la carpeta "{{ carpeta_raiz }}/{{ java }}" existe
+  stat:  
+    path: "{{ carpeta_raiz }}/{{ java }}"
+  register: stat_java
 
-- name: Add group "jboss"
-  group:
-    name: jboss
+- name: Moviendo java a carpeta "{{ carpeta_raiz }}"
+  command: "/bin/mv /tmp/claro-jboss/binarios/{{ java }}  {{ carpeta_raiz }}"
+  when: stat_java.stat.exists == False
 
-- name: Add user "jboss"
-  user:
-    name: jboss
-    group: jboss
-    home: /usr/share/jboss-as
-
-- name: Change ownership of JBoss installation
+- name: Creando symbolic link de jboss
   file:
-    path: /usr/share/jboss-as/
-    owner: jboss
-    group: jboss
+    src: "{{ carpeta_raiz }}/{{ jboss }}/"
+    dest: "{{ carpeta_raiz }}/jboss"
+    state: link
+
+- name: Creando symbolic link de java
+  file:
+    src: "{{ carpeta_raiz }}/{{ java }}/"
+    dest: "{{ carpeta_raiz }}/java"
+    state: link
+
+    #- name: enable verbose mode
+    # ini_file: dest=/etc/enviroment section=DEFAULT option=verbose value=True backup=yes
+    #tags: configuration
+
+- name: Make sure test file exists
+  file:
+    dest: '/etc/profile.d/jboss.sh'
+    state: 'touch'
+  changed_when: False
+
+- name: Set JAVA_HOME
+  lineinfile:
+    dest: /etc/profile.d/jboss.sh
+    state: present
+    regexp: '^export JAVA_HOME'
+    line: "JAVA_HOME={{ carpeta_raiz }}/java"
+
+- name: Set JBOSS_HOME
+  lineinfile:
+    dest: /etc/profile.d/jboss.sh
+    state: present
+    regexp: '^export JBOSS_HOME'
+    line: "JBOSS_HOME={{ carpeta_raiz }}/jboss"
+
+- name: Set PATH
+  lineinfile:
+    dest: /etc/profile.d/jboss.sh
+    state: present
+    regexp: '^export PATH'
+    line: 'PATH=$PATH:$JBOSS_HOME/bin:$JAVA_HOME/bin'
+
+    #- name: Set export
+    #lineinfile:
+    #dest: /etc/profile.d/jboss.sh
+    #state: present
+    #regexp: '^export PATH JAVA_HOME JBOSS_HOME'
+    #line: 'export PATH JAVA_HOME JBOSS_HOME'
+
+- name: Add group "{{ group }}"
+  group:
+    name: "{{ group }}"
+
+- name: Add user "{{ user }}"
+  user:
+    name: "{{ user }}"
+    group: "{{ user }}"
+    home: "{{ carpeta_raiz }}/jboss/"
+
+- name: Otorgando permisos a la carpeta jboss
+  file:
+    path: "{{ carpeta_raiz }}/jboss/"
+    owner: "{{ user }}"
+    group: "{{ group }}"
     state: directory
     recurse: yes
 
-- name: Copy the init script
-  copy:
-    src: jboss-as-standalone.sh
-    dest: /etc/init.d/jboss
-    mode: 0755
+    #- name: Copying standalone.xml configuration file
+    #  template:
+    #    src: standalone.xml
+    #    dest: "{{ carpeta_raiz }}/jboss/standalone/configuration/"
+    #  notify: restart jboss
 
-- name: Workaround for systemd bug
-  shell: service jboss start && chkconfig jboss on
-  ignore_errors: yes
+    #- name: Copy the init script
+    #  copy:
+    #    src: jboss-as-standalone.sh
+    #    dest: /etc/init.d/jboss
+    #    mode: 0755
 
-- name: Enable JBoss to be started at boot
-  service:
-    name: jboss
-    enabled: yes
-    state: started
+    #- name: Workaround for systemd bug
+    #  shell: service jboss start && chkconfig jboss on
+    #  ignore_errors: yes
+
+    #- name: Enable JBoss to be started at boot
+    #  service:
+    #    name: jboss
+    #    enabled: yes
+    #    state: started
 
 - name: deploy iptables rules
   template:
@@ -97,4 +152,9 @@
   with_items:
   - "{{ http_port }}/tcp"
   - "{{ https_port }}/tcp"
+  - "{{ https_port_managed }}/tcp"
 
+- name: Agrego el usuario admin para la consola
+  command: "{{ carpeta_raiz }}/{{ jboss }}/bin/add-user.sh -u 'admin' -p 'admin' -g 'admin'"
+
+#- name: 
